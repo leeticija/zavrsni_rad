@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python
 
 import rospy
@@ -72,7 +71,7 @@ class GeometricController:
         self.mot_speed = 0
         self.odometry = None
         self.pos_ref = None
-        self.ros_rate = rospy.Rate(100)# geometric control at 100 Hz
+        self.ros_rate = rospy.Rate(100) # geometric control at 100 Hz
         rospy.Subscriber('odometry', Odometry, self.odometry_cb)
         rospy.Subscriber('pos_ref', Vector3, self.odometry_cb)
         self.mot_ref_pub = rospy.Publisher('mot_vel_ref', Float32, queue_size=1)
