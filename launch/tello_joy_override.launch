@@ -1,0 +1,14 @@
+<launch>
+    
+    <arg name="land_index"      default="6" />
+    <arg name="takeoff_index"   default="7" />
+    <arg name="override_index"  default="4" />
+
+    <node name="joy" pkg="joy" type="joy_node" output="screen"/>
+    <node name="tello_joy_override" pkg="med_uav_control" type="tello_joy_override.py" ns="tello" output="screen">
+      <param name="tello_joy/takeoff_index"   value="$(arg takeoff_index)"/>
+      <param name="tello_joy/land_index"      value="$(arg land_index)"/>
+      <param name="tello_joy/override_index"  value="$(arg override_index)"/>
+    </node>
+
+</launch>

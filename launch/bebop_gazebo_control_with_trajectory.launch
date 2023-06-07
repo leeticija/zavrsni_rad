@@ -1,0 +1,30 @@
+<launch>
+
+    <!-- Launch UAV -->
+    <include file="$(find med_uav_description)/launch/gazebo_bebop.launch">
+        <arg name="wind_force" value="0.0"/>
+        <arg name="wind_start" default="5.0"/>
+        <arg name="wind_duration" default="10.0"/>
+        <arg name="wind_direction_x" default="0.0"/>
+        <arg name="wind_direction_y" default="0.0"/>
+        <arg name="wind_direction_z" default="1.0"/>
+    </include>
+
+    <group ns="bebop">
+        <node pkg="med_uav_control" type="height_ctl.py" name="height_ctl" output="screen"/>
+        <node pkg="med_uav_control" type="attitude_ctl.py" name="attitude_ctl" output="screen"/>
+        <node pkg="med_uav_control" type="horizontal_ctl.py" name="horizontal_ctl" output="screen"/>
+
+        <node pkg="med_uav_control" type="trajectory_to_position_reference.py" name="trajectory_to_position_reference" output="screen" />
+
+        <node name="mav_mission_planner" pkg="mav_path_trajectory" type="mav_mission_planner" output="screen">
+            <param name="max_quadrotor_speed" value="2.0" />
+            <param name="max_quadrotor_acceleration" value="0.8" />
+            <param name="trajectory_sampling_frequency" value="100" />
+            <remap from="/bebop/multi_dof_trajectory" to="/bebop/trajectory_reference"/>
+            <!-- Params for unskilled pilot control -->
+        </node>
+        
+    </group>
+
+</launch>

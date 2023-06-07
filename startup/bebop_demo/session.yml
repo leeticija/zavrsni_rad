@@ -1,0 +1,22 @@
+name: bebop_demo 
+root: ./
+startup_window: bebop_ctl 
+pre_window: source ~/Workspace/bebop_ws/devel/setup.zsh; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/Workspace/bebop_ws/devel/lib/parrot_arsdk 
+windows:
+  - roscore:
+      layout: tiled
+      panes:
+        - roscore
+        - waitForRos; roslaunch med_uav_control bebop_driver.launch
+  - bebop_ctl:
+      layout: tiled
+      panes:
+        - waitForRos; roslaunch med_uav_control bebop_joy_override.launch land_index:=1 takeoff_index:=0
+        - waitForRos; sleep 2; rostopic echo /bebop/cmd_vel_real
+        - waitForRos; sleep 2; rostopic echo /bebop/states/common/CommonState/BatteryStateChanged
+  - image:
+      layout: tiled
+      panes:
+        - waitForRos; sleep 10; rosrun rqt_gui rqt_gui --perspective-file custom_config/bebop_demo.perspective
+        
+

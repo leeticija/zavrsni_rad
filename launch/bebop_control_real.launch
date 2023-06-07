@@ -1,0 +1,11 @@
+<launch>
+
+    <group ns="bebop">
+        <!--node pkg="med_uav_control" type="height_ctl.py" name="height_ctl" output="screen"/-->
+        <!--node pkg="med_uav_control" type="attitude_ctl.py" name="attitude_ctl" output="screen"/-->
+        <node pkg="med_uav_control" type="horizontal_ctl_real.py" name="horizontal_ctl_real" output="screen"/>
+		<node pkg="joy" type="joy_node" name="horizontal_ctl_real_joy" output="screen"/>
+		<node pkg="med_uav_control" type="trajectory_to_trajectory_point.py" name="trajectory_to_trajectory_point" output="screen"/>
+    </group>
+
+</launch>
