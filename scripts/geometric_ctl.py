@@ -7,12 +7,15 @@ from geometry_msgs.msg import Vector3
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Float32
 from tf import transformations
-import numpy
+import numpy as np
 from dynamic_reconfigure.server import  Server
 from med_uav_control.cfg import MavZCtlParamsConfig
 from med_uav_control.msg import PIDController
 from mav_msgs.msg import Actuators
 from sim_controller import UAV
+from scipy.integrate import ode
+from scipy.integrate import odeint
+
 
 '''
 
@@ -98,7 +101,7 @@ class GeometricController:
         self.euler_z = 0
 
         # rotation matrix:
-        self.R = [0, 0, 0]
+        self.R = np.eye(3)
 
         # state vector:
         self.X = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -112,6 +115,9 @@ class GeometricController:
         self.ros_rate = rospy.Rate(100) # geometric control at 100 Hz
 
         # initialize UAV class
+        e3 = np.array([0.,0.,1.])
+        J = np.diag([0.00389, 0.00389, 0.0078]) # podaci uzeti sa stranice: https://github.com/larics/med_uav_description/blob/master/config/mathematical_model.pdf
+        self.uav = UAV(J, e3)
     
     def odometry_gt_cb(self, msg):
 
@@ -183,7 +189,7 @@ class GeometricController:
         while not rospy.is_shutdown():
             self.ros_rate.sleep()
 
-            # inicijalizirati vektor stanja X iz odometrijskih podataka:
+            # inicijalizirati vektor stanja X iz proracunatih odometrijskih podataka:
             self.X = [self.pos_x, self.pos_y, self.pos_z, self.linear_x, self.linear_y, self.linear_z]
             self.X.extend(self.R_x)
             self.X.extend(self.R_y)
@@ -191,8 +197,26 @@ class GeometricController:
             self.X.extend([self.euler_rate_x, self.euler_rate_y, self.euler_rate_z])
 
             # pozivati dydt
+            dt = 1./100
+            sim = []
+            xd = []
+            xd_dot = []
+            command_val = []
+            solver = ode(self.uav.dydt)
+            solver.set_integrator('dopri5').set_initial_value(y0, 0)
 
-            # pomocu f, M dobivenih od dydt upravljati letjelicom (pretvoriti u brzine vrtnje)
+            solver.integrate(solver.t+dt)
+            sim.append(solver.y)
+            xd.append(uav_t.xd)
+            xd_dot.append(uav_t.xd_dot)
+            command_val.append(uav_t.command)
+
+            # pomocu f, M dobivenih od dydt upravljati letjelicom (pretvoriti u brzine vrtnje):
+            
+            #mot_sp1 = self.w_sp - dw_roll - dw_pitch - dw_yaw # reference value for motor velocity w.sp
+            #mot_sp2 = self.w_sp + dw_roll - dw_pitch + dw_yaw
+            #mot_sp3 = self.w_sp + dw_roll + dw_pitch - dw_yaw
+            #mot_sp4 = self.w_sp - dw_roll + dw_pitch + dw_yaw
         
             # mot_speed_msg = Actuators()
             # mot_speed_msg.angular_velocities = [self.mot_speed,self.mot_speed,self.mot_speed, self.mot_speed]
