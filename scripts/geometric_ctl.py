@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import math
 
 import rospy
 from pid import PID
@@ -68,35 +69,134 @@ Subscribes to:
 class GeometricController:
 
     def __init__(self):
+
         self.mot_speed = 0
+
+        # initialize values:
         self.odometry = None
+        self.odometry_gt = None
         self.pos_ref = None
-        self.ros_rate = rospy.Rate(100) # geometric control at 100 Hz
+
+        # initialize position in world frame:
+        self.pos_x = 0
+        self.pos_y = 0
+        self.pos_z = 0
+
+        # linearne brzine:
+        self.linear_x = 0
+        self.linear_y = 0
+        self.linear_z = 0
+
+        # angular velocities rates:
+        self.euler_rate_x = 0
+        self.euler_rate_y = 0
+        self.euler_rate_z = 0
+
+        # initialize euler angles:
+        self.euler_x = 0
+        self.euler_y = 0
+        self.euler_z = 0
+
+        # rotation matrix:
+        self.R = [0, 0, 0]
+
+        # state vector:
+        self.X = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+        # initialize subscribers/publishers:
         rospy.Subscriber('odometry', Odometry, self.odometry_cb)
         rospy.Subscriber('pos_ref', Vector3, self.odometry_cb)
+        rospy.Subscriber('odometry_gt', Odometry, self.odometry_gt_cb)
         self.mot_ref_pub = rospy.Publisher('mot_vel_ref', Float32, queue_size=1)
 
+        self.ros_rate = rospy.Rate(100) # geometric control at 100 Hz
+
         # initialize UAV class
+    
+    def odometry_gt_cb(self, msg):
+
+        self.odometry_gt = msg
+        print("Rotacijska matrica:")
+
+        # get position:
+        self.pos_x = msg.pose.pose.position.x
+        self.pos_y = msg.pose.pose.position.y
+        self.pos_z = msg.pose.pose.position.z
+
+        # get linear velocities:
+        self.linear_x = msg.twist.twist.linear.x
+        self.linear_y = msg.twist.twist.linear.y
+        self.linear_z = msg.twist.twist.linear.z
+
+        # get angular velocities:
+        # self.ang_x = msg.twist.twist.angular.x
+        # self.ang_y = msg.twist.twist.angular.y
+        # self.ang_z = msg.twist.twist.angular.z
+
+        # orjentacija:
+        qx = msg.pose.pose.orientation.x
+        qy = msg.pose.pose.orientation.y
+        qz = msg.pose.pose.orientation.z
+        qw = msg.pose.pose.orientation.w
+        # konverzija kvaterniona u eulerove kuteve (yaw - pitch - roll)
+        self.euler_x = math.atan2(2 * (qw * qx + qy * qz), qw * qw - qx * qx - qy * qy + qz * qz)
+        self.euler_y = math.asin(2 * (qw * qy - qx * qz))
+        self.euler_z = math.atan2(2 * (qw * qz + qx * qy), qw * qw + qx * qx - qy * qy - qz * qz)
+
+        # angular rate:
+        p = msg.twist.twist.angular.x
+        q = msg.twist.twist.angular.y
+        r = msg.twist.twist.angular.z
+        sx = math.sin(self.euler_x)   # sin(roll)
+        cx = math.cos(self.euler_x)   # cos(roll)
+        cy = math.cos(self.euler_y)   # cos(pitch)
+        ty = math.tan(self.euler_y)   # tan(pitch)
+        # conversion gyro measurements to roll_rate, pitch_rate, yaw_rate
+        self.euler_rate_x = p + sx * ty * q + cx * ty * r
+        self.euler_rate_y = cx * q - sx * r
+        self.euler_rate_z = sx / cy * q + cx / cy * r
+
+        # calculate R matrix:
+        # redci predstavljaju pojedinu transformiranu os koordinatnog sustava.
+        # redak 1. rotacijske matrice (x):
+        R_x = [1-(2*pow(qy, 2))-(2*pow(qz, 2)), (2*qx*qy)-2*qz*qw, 2*qx*qz+2*qy*qw]
+        # redak 2. rotacijske matrice (y):
+        R_y = [(2*qx*qy)+(2*qz*qw), 1-(2*pow(qx, 2))-(2*pow(qz, 2)), (2*qy*qz)-(2*qx*qw)]
+        # redak 3. rotacijske matrice (z):
+        R_z = [(2*qx*qz)-(2*qy*qw), (2*qy*qz)+(2*qx*qw), 1-(2*pow(qx, 2))-(2*pow(qy, 2))]
+
+        self.R.append(R_x)
+        self.R.append(R_y)
+        self.R.append(R_z)
+
 
     def odometry_cb(self, odom):
         # pohraniti u odometriju
         self.odometry = odom
-        print("ODOMETRIJA:", odom)
+        # print("ODOMETRIJA:", odom)
 
     def pos_ref_cb(self, pos):
         self.pos_ref = pos
 
     def run(self):
-        # inicijalizirati vektor stanja X iz odometrije
-        # pozivati dydt
-        # pomocu f, M dobivenih od dydt upravljati letjelicom (pretvoriti u brzine vrtnje)
+        
         while not rospy.is_shutdown():
             self.ros_rate.sleep()
-        # pogledati kakva je rotacijska matrica kad se letjelica mice!
+
+            # inicijalizirati vektor stanja X iz odometrijskih podataka:
+            self.X = [self.pos_x, self.pos_y, self.pos_z, self.linear_x, self.linear_y, self.linear_z]
+            self.X.extend(self.R_x)
+            self.X.extend(self.R_y)
+            self.X.extend(self.R_z)
+            self.X.extend([self.euler_rate_x, self.euler_rate_y, self.euler_rate_z])
+
+            # pozivati dydt
+
+            # pomocu f, M dobivenih od dydt upravljati letjelicom (pretvoriti u brzine vrtnje)
         
-        # mot_speed_msg = Actuators()
-        # mot_speed_msg.angular_velocities = [self.mot_speed,self.mot_speed,self.mot_speed, self.mot_speed]
-        # self.pub_mot.publish(mot_speed_msg)
+            # mot_speed_msg = Actuators()
+            # mot_speed_msg.angular_velocities = [self.mot_speed,self.mot_speed,self.mot_speed, self.mot_speed]
+            # self.pub_mot.publish(mot_speed_msg)
 
 if __name__ == '__main__':
 
