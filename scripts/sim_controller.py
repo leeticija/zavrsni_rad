@@ -21,12 +21,12 @@ class UAV(object):
         self.J = J
         self.e3 = e3
         self.kR = 8.81 # attitude gains
-        self.kW = 2.54 # attitude gains
+        self.kW = 2.54 # angular rate gain
         self.kx = 16.*self.m # position gains
-        self.kv = 5.6*self.m # position gains
+        self.kv = 5.6*self.m # velocity gains
         self.xd = None
         self.xd_dot = None
-        self.command = None
+        self.command = [0,0,0,0]
         print('UAV: initialized')
         # self.ukf = ukf_uav.UnscentedKalmanFilter(12,6,0.01)
 
@@ -153,7 +153,7 @@ class UAV(object):
         x_3dot = -1/self.m*( f_dot*R + f*R_dot ).dot(self.e3)
         ex_3dot = x_3dot - xd_3dot
 
-        A = - self.kv*ev - self.m*self.g*e3 + self.m*xd_2dot
+        A = - self.kv*ev - self.m*self.g*self.e3 + self.m*xd_2dot
         A_dot = - self.kv*ex_2dot + self.m*xd_3dot
         A_2dot = - self.kv*ex_3dot + self.m*xd_4dot
 

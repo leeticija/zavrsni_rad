@@ -2,15 +2,15 @@
 import math
 
 import rospy
-from pid import PID
+#from pid import PID
 from geometry_msgs.msg import Vector3
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Float32
 from tf import transformations
 import numpy as np
 from dynamic_reconfigure.server import  Server
-from med_uav_control.cfg import MavZCtlParamsConfig
-from med_uav_control.msg import PIDController
+#from med_uav_control.cfg import MavZCtlParamsConfig
+#from med_uav_control.msg import PIDController
 from mav_msgs.msg import Actuators
 from sim_controller import UAV
 from scipy.integrate import ode
@@ -18,10 +18,6 @@ from scipy.integrate import odeint
 
 
 '''
-
-var yaw = atan2(2.0*(q.y*q.z + q.w*q.x), q.w*q.w - q.x*q.x - q.y*q.y + q.z*q.z);
-var pitch = asin(-2.0*(q.x*q.z - q.w*q.y));
-var roll = atan2(2.0*(q.x*q.y + q.w*q.z), q.w*q.w + q.x*q.x - q.y*q.y - q.z*q.z);
 
 ATTITUDE CONTROL
 
@@ -74,6 +70,7 @@ class GeometricController:
     def __init__(self):
 
         self.mot_speed = 0
+        self.count = 0
 
         # initialize values:
         self.odometry = None
@@ -101,7 +98,7 @@ class GeometricController:
         self.euler_z = 0
 
         # rotation matrix:
-        self.R = np.eye(3)
+        self.R = [[0,0,0], [0,0,0], [0,0,0]]
 
         # state vector:
         self.X = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -111,6 +108,7 @@ class GeometricController:
         rospy.Subscriber('pos_ref', Vector3, self.odometry_cb)
         rospy.Subscriber('odometry_gt', Odometry, self.odometry_gt_cb)
         self.mot_ref_pub = rospy.Publisher('mot_vel_ref', Float32, queue_size=1)
+        self.pub_mot = rospy.Publisher('/gazebo/command/motor_speed', Actuators, queue_size=1)
 
         self.ros_rate = rospy.Rate(100) # geometric control at 100 Hz
 
@@ -122,7 +120,6 @@ class GeometricController:
     def odometry_gt_cb(self, msg):
 
         self.odometry_gt = msg
-        print("Rotacijska matrica:")
 
         # get position:
         self.pos_x = msg.pose.pose.position.x
@@ -191,28 +188,53 @@ class GeometricController:
 
             # inicijalizirati vektor stanja X iz proracunatih odometrijskih podataka:
             self.X = [self.pos_x, self.pos_y, self.pos_z, self.linear_x, self.linear_y, self.linear_z]
-            self.X.extend(self.R_x)
-            self.X.extend(self.R_y)
-            self.X.extend(self.R_z)
+            self.X.extend(self.R[0])
+            self.X.extend(self.R[1])
+            self.X.extend(self.R[2])
             self.X.extend([self.euler_rate_x, self.euler_rate_y, self.euler_rate_z])
 
             # pozivati dydt
-            dt = 1./100
-            sim = []
-            xd = []
-            xd_dot = []
-            command_val = []
-            solver = ode(self.uav.dydt)
-            solver.set_integrator('dopri5').set_initial_value(y0, 0)
 
-            solver.integrate(solver.t+dt)
-            sim.append(solver.y)
-            xd.append(uav_t.xd)
-            xd_dot.append(uav_t.xd_dot)
-            command_val.append(uav_t.command)
+
+            # R0 = np.eye(3)
+            # W0 = [0.,0.,0.];   # initial angular velocity
+            # x0 = [0.,0.,0.];  # initial position (altitude?0)
+            # v0 = [0.,0.,0.];   # initial velocity
+            # R0v = np.array(R0).flatten().T
+            # y0 = np.concatenate((x0, v0, R0v, W0))
+
+            # dt = 1./100
+            # sim = []
+            # xd = []
+            # xd_dot = []
+            # command_val = []
+            # solver = ode(self.uav.dydt)
+            # solver.set_integrator('dopri5').set_initial_value(y0, 0)
+
+            # solver.integrate(solver.t+dt)
+            # sim.append(solver.y)
+            # xd.append(self.uav.xd)
+            # xd_dot.append(self.uav.xd_dot)
+            # command_val.append(self.uav.command)
+
+            print('pozivam funkciju dydt!')
+            command_val = self.uav.dydt(self.count+0.01, self.X)
+
+            print('COMMAND VAL iz dydt:')
+            print(self.uav.command)
+
+            mot_speed_msg = Actuators()
+            mot_speed_msg.angular_velocities = [self.uav.command[0],self.uav.command[1],self.uav.command[2],self.uav.command[3]]
+            
+            
+            #mot_speed_msg.angular_velocities = [command_val[0],command_val[1],command_val[0][2],command_val[0][3]]            
+            
+            print('MOTOR SPEED MESSAGE:')
+            print(mot_speed_msg)
+            self.pub_mot.publish(mot_speed_msg)
 
             # pomocu f, M dobivenih od dydt upravljati letjelicom (pretvoriti u brzine vrtnje):
-            
+
             #mot_sp1 = self.w_sp - dw_roll - dw_pitch - dw_yaw # reference value for motor velocity w.sp
             #mot_sp2 = self.w_sp + dw_roll - dw_pitch + dw_yaw
             #mot_sp3 = self.w_sp + dw_roll + dw_pitch - dw_yaw

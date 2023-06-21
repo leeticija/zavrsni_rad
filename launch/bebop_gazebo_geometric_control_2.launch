@@ -1,0 +1,19 @@
+<launch>
+
+	<!-- Launch UAV -->
+    <include file="$(find med_uav_description)/launch/gazebo_bebop.launch">
+        <arg name="wind_force" value="0.0"/>
+        <arg name="wind_start" default="5.0"/>
+        <arg name="wind_duration" default="10.0"/>
+        <arg name="wind_direction_x" default="0.0"/>
+        <arg name="wind_direction_y" default="0.0"/>
+        <arg name="wind_direction_z" default="1.0"/>
+    </include>
+
+    <group ns="bebop">
+        <node pkg="med_uav_control" type="geometric_ctl.py" name="geometric_ctl" output="screen"/>
+
+        <node pkg="med_uav_control" type="trajectory_to_position_reference.py" name="trajectory_to_position_reference" output="screen" />
+    </group>
+
+</launch>
