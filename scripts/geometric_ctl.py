@@ -70,17 +70,17 @@ class GeometricController:
     def __init__(self):
 
         self.mot_speed = 0
-        self.count = 0
-
-        # initialize values:
-        self.odometry = None
-        self.odometry_gt = None
-        self.pos_ref = None
+        self.t = 0
 
         # initialize position in world frame:
         self.pos_x = 0
         self.pos_y = 0
         self.pos_z = 0
+
+        # initialize referent position in world frame:
+        self.pos_x_ref = 0
+        self.pos_y_ref = 0
+        self.pos_z_ref = 0
 
         # linearne brzine:
         self.linear_x = 0
@@ -104,8 +104,8 @@ class GeometricController:
         self.X = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
         # initialize subscribers/publishers:
-        rospy.Subscriber('odometry', Odometry, self.odometry_cb)
-        rospy.Subscriber('pos_ref', Vector3, self.odometry_cb)
+        #rospy.Subscriber('odometry', Odometry, self.odometry_cb)
+        rospy.Subscriber('pos_ref', Vector3, self.pos_ref_cb)
         rospy.Subscriber('odometry_gt', Odometry, self.odometry_gt_cb)
         self.mot_ref_pub = rospy.Publisher('mot_vel_ref', Float32, queue_size=1)
         self.pub_mot = rospy.Publisher('/gazebo/command/motor_speed', Actuators, queue_size=1)
@@ -118,8 +118,6 @@ class GeometricController:
         self.uav = UAV(J, e3)
     
     def odometry_gt_cb(self, msg):
-
-        self.odometry_gt = msg
 
         # get position:
         self.pos_x = msg.pose.pose.position.x
@@ -168,23 +166,24 @@ class GeometricController:
         # redak 3. rotacijske matrice (z):
         R_z = [(2*qx*qz)-(2*qy*qw), (2*qy*qz)+(2*qx*qw), 1-(2*pow(qx, 2))-(2*pow(qy, 2))]
 
+        self.R = []
         self.R.append(R_x)
         self.R.append(R_y)
         self.R.append(R_z)
 
-
-    def odometry_cb(self, odom):
-        # pohraniti u odometriju
-        self.odometry = odom
-        # print("ODOMETRIJA:", odom)
-
     def pos_ref_cb(self, pos):
-        self.pos_ref = pos
+
+        self.pos_x_ref = pos.x
+        self.pos_y_ref = pos.y
+        self.pos_z_ref = pos.z
 
     def run(self):
         
         while not rospy.is_shutdown():
             self.ros_rate.sleep()
+
+            # korak  u vremenu
+            self.t = self.t + 0.01
 
             # inicijalizirati vektor stanja X iz proracunatih odometrijskih podataka:
             self.X = [self.pos_x, self.pos_y, self.pos_z, self.linear_x, self.linear_y, self.linear_z]
@@ -194,55 +193,41 @@ class GeometricController:
             self.X.extend([self.euler_rate_x, self.euler_rate_y, self.euler_rate_z])
 
             # pozivati dydt
-
-
-            # R0 = np.eye(3)
-            # W0 = [0.,0.,0.];   # initial angular velocity
-            # x0 = [0.,0.,0.];  # initial position (altitude?0)
-            # v0 = [0.,0.,0.];   # initial velocity
-            # R0v = np.array(R0).flatten().T
-            # y0 = np.concatenate((x0, v0, R0v, W0))
-
-            # dt = 1./100
-            # sim = []
-            # xd = []
-            # xd_dot = []
-            # command_val = []
-            # solver = ode(self.uav.dydt)
-            # solver.set_integrator('dopri5').set_initial_value(y0, 0)
-
-            # solver.integrate(solver.t+dt)
-            # sim.append(solver.y)
-            # xd.append(self.uav.xd)
-            # xd_dot.append(self.uav.xd_dot)
-            # command_val.append(self.uav.command)
-
-            print('pozivam funkciju dydt!')
-            command_val = self.uav.dydt(self.count+0.01, self.X)
-
-            print('COMMAND VAL iz dydt:')
-            print(self.uav.command)
+            self.uav.dydt(self.t, self.X)
+            command = self.uav.command # dydt je postavio komandu, tj. matricu [f, M1, M2, M3]
+            print("COMMAND:")
+            print(command)
+            
+            # pomocu f, M dobivenih od dydt upravljati letjelicom (pretvoriti u brzine vrtnje):
+            f_matrix = np.array([[command[0]], [command[1]], [command[2]], [command[3]]])
+            A = np.array([[1, 1, 1, 1], [0, - self.uav.d, 0, self.uav.d], [self.uav.d, 0, -self.uav.d, 0], [- self.uav.ctf, - self.uav.ctf, self.uav.ctf, - self.uav.ctf]])
+            motor_speeds = self.get_motor_speeds(f_matrix, A, self.uav)
+            print('MOTOR SPEEDS:', motor_speeds)
 
             mot_speed_msg = Actuators()
-            mot_speed_msg.angular_velocities = [self.uav.command[0],self.uav.command[1],self.uav.command[2],self.uav.command[3]]
-            
-            
-            #mot_speed_msg.angular_velocities = [command_val[0],command_val[1],command_val[0][2],command_val[0][3]]            
-            
-            print('MOTOR SPEED MESSAGE:')
-            print(mot_speed_msg)
+            # example motors speeds: 382, -382, 420, -420. 
+            mot_speed_msg.angular_velocities = [motor_speeds[0], motor_speeds[1], motor_speeds[2], motor_speeds[3]]            
             self.pub_mot.publish(mot_speed_msg)
 
-            # pomocu f, M dobivenih od dydt upravljati letjelicom (pretvoriti u brzine vrtnje):
+    def get_motor_speeds(self, f_matrix, A_matrix, uav):
 
-            #mot_sp1 = self.w_sp - dw_roll - dw_pitch - dw_yaw # reference value for motor velocity w.sp
-            #mot_sp2 = self.w_sp + dw_roll - dw_pitch + dw_yaw
-            #mot_sp3 = self.w_sp + dw_roll + dw_pitch - dw_yaw
-            #mot_sp4 = self.w_sp - dw_roll + dw_pitch + dw_yaw
-        
-            # mot_speed_msg = Actuators()
-            # mot_speed_msg.angular_velocities = [self.mot_speed,self.mot_speed,self.mot_speed, self.mot_speed]
-            # self.pub_mot.publish(mot_speed_msg)
+        # [f1, f2, f3, f4] = A**-1 * f_matrix
+
+        A_inverz = np.linalg.inv(A_matrix)
+        sile_na_motorima = np.matmul(A_inverz, f_matrix)
+
+        # Fi = bf * Ωi**2
+
+        k1 = math.sqrt(abs(sile_na_motorima[0][0])/uav.bf)
+        k2 = math.sqrt(abs(sile_na_motorima[1][0])/uav.bf)
+        k3 = math.sqrt(abs(sile_na_motorima[2][0])/uav.bf)
+        k4 = math.sqrt(abs(sile_na_motorima[3][0])/uav.bf)
+
+        print("brzine:", k1, k2, k3, k4)
+
+        return k1, -k2, k3, -k4
+
+
 
 if __name__ == '__main__':
 

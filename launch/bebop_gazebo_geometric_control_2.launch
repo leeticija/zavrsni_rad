@@ -12,8 +12,6 @@
 
     <group ns="bebop">
         <node pkg="med_uav_control" type="geometric_ctl.py" name="geometric_ctl" output="screen"/>
-
-        <node pkg="med_uav_control" type="trajectory_to_position_reference.py" name="trajectory_to_position_reference" output="screen" />
     </group>
 
 </launch>

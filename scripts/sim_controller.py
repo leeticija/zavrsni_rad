@@ -16,7 +16,10 @@ import ukf_uav
 class UAV(object):
 
     def __init__(self, J, e3):
-        self.m = 4.34
+        self.m = 0.5
+        self.bf = 0.0000854858 # thrust constant of a motor.
+        self.ctf = 0.016 # moment constant of a motor.
+        self.d = 0.12905 # distance from center of mass to motor.
         self.g = 9.81
         self.J = J
         self.e3 = e3
@@ -28,7 +31,6 @@ class UAV(object):
         self.xd_dot = None
         self.command = [0,0,0,0]
         print('UAV: initialized')
-        # self.ukf = ukf_uav.UnscentedKalmanFilter(12,6,0.01)
 
     def dydt(self, t, X):
         R = np.reshape(X[6:15],(3,3));  # rotation from body to inertial
@@ -50,6 +52,8 @@ class UAV(object):
         f = np.array([0,0,0])
         M = np.array([0,0,0])
 
+        print('t:', t)
+
         if t < 4:
             xd_dot = np.array([1.+ 0.5*t, 0.2*np.sin(2*np.pi*t), -0.1])
             b1d = np.array([1., 0.,0.])
@@ -57,6 +61,7 @@ class UAV(object):
                     b1d, b1d_dot, b1d_ddot, Rd, Wd, Wd_dot)
             (f, M) = self.velocity_control(t, R, W, x, v, d_in)
         elif t < 6:
+            print("IM IN t < 6 !!!")
             xd = np.array([8.,0.,0.])
             ang_d=2.*np.pi*(t-4)
             ang_d_dot=2.*np.pi
@@ -110,8 +115,53 @@ class UAV(object):
         X_dot = np.concatenate((x_dot, v_dot, R_dot.flatten(), W_dot))
         self.xd = xd
         self.xd_dot = xd_dot
-        self.command = np.insert(M,0,f)
+        self.command = np.insert(M, 0, f)
+        print("M:")
+        print(M)
+        print("f:")
+        print(f)
         return X_dot
+
+
+    # NOVA FUNKCIJA KOJU TRENUTNO NE ZOVEM, ALI TREBALA BI RADITI ISTO STO I dydt
+    # pos_ref je array s brojevima - referentna pozicija
+    def get_commands(self, t, X, pos_ref):
+        # f = - (-kx*ex - kv*ev - m*g*e3 + m*xd_ddot) puta R*e3
+        # M = -kR*eR - kΩ*eΩ + Ω x J*Ω - J(Ωkappa * Rtrans * Rd * Ωd - Rtras * Rd * Ωd_dot)
+
+        # xd je referentna trazena pozicija (tocka u prostoru u koord. sustavu svijeta koju je potrebno postici u trenutku t).
+        xd = np.array([0.1*np.sin(2*np.pi*t), 0.1*np.sin(2*np.pi*t), pos_ref[2]])
+            
+        # derivacije od xd:
+        xd_dot = np.array([(np.pi/5)*np.cos(2*np.pi*t), (np.pi/5)*np.cos(2*np.pi*t), 0])
+        xd_ddot = np.array([-((2*pow(np.pi, 2))/5)*np.sin(2*np.pi*t), -((2*pow(np.pi, 2))/5)*np.sin(2*np.pi*t), 0])
+
+        # naci sve potrebne vrijednosti:
+
+        # 1. ex = x - xd ----> position error u trenutku t:
+        x = X[:3] # current position in world frame (vektor od 3 vrijednosti)
+        x = np.array(x)
+        ex = x - xd # vektor pogreske pozicije
+
+        # 2. ev = v - vd ----> velocity error u trenutku t:
+        v = np.array(X[3:6])
+        vd = xd_dot # referentna brzina
+        ev = v - vd
+
+        # 3. R ----> rotacijska matrica
+        R = np.array([X[6:9], X[9:12], X[12:15]])  # rotation from body fixed frame to inertial frame.
+        
+        #print('umnozak:', R*self.e3)
+        # total thrust f = - (-kx*ex - kv*ev - m*g*e3 + m*xd_ddot) puta R*e3
+        m1 = -(-self.kx*ex - self.kv*ev - self.m*self.g*self.e3 + self.m*xd_ddot)
+        m2 = R*self.e3
+        f = np.dot(m1, m2)
+
+        print('TOTAl THRUST:')
+        print(f)
+        
+        return None
+
 
     def position_control(self, t, R, W, x, v, d_in):
         (xd, xd_dot, xd_2dot, xd_3dot, xd_4dot, b1d, b1d_dot, b1d_ddot, Rd, Wd, Wd_dot) = d_in
