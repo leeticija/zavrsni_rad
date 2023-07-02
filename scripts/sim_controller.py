@@ -18,17 +18,20 @@ class UAV(object):
     def __init__(self, J, e3):
         self.m = 0.5
         self.bf = 0.0000854858 # thrust constant of a motor.
-        self.ctf = 0.016 # moment constant of a motor.
+        self.ctf = self.bf # moment constant of a motor.
         self.d = 0.12905 # distance from center of mass to motor.
         self.g = 9.81
         self.J = J
         self.e3 = e3
         self.kR = 8.81 # attitude gains
         self.kW = 2.54 # angular rate gain
-        self.kx = 16.*self.m # position gains
-        self.kv = 5.6*self.m # velocity gains
+        self.kx = 25*self.m # position gains
+        self.kv = 12.5*self.m # velocity gains
+        # self.kx = 0
+        #self.kv = 0*self.m
         self.xd = None
         self.xd_dot = None
+        self.flag = False
         self.command = [0,0,0,0]
         print('UAV: initialized')
 
@@ -38,8 +41,18 @@ class UAV(object):
         x = X[:3];  # position
         v = X[3:6];    # velocity
 
-        xd = np.array([0, 0, 0])
-        xd_dot = np.array([0, 0, 0])
+        #xd = np.array([0, 0, 0])
+        xd = np.array([0,0,1])
+        #xd_dot = np.array([0, 0, 0.457])
+        #xd_dot = np.array([0, 0, 0.45])
+        print('position z:', (1-x[2])/2.117)
+        #xd_dot = np.array([0, 0, (2-x[2])/4])
+        xd_dot = np.array([0, 0, (1-x[2])/2.117])
+
+        if 1-x[2] <= 0.8:
+            self.flag = True
+            #self.command = np.insert(M, 0, f)
+            
         xd_ddot = np.array([0, 0, 0])
         xd_dddot = np.array([0, 0, 0])
         xd_ddddot = np.array([0, 0, 0])
@@ -53,60 +66,14 @@ class UAV(object):
         M = np.array([0,0,0])
 
         print('t:', t)
-
-        if t < 4:
-            xd_dot = np.array([1.+ 0.5*t, 0.2*np.sin(2*np.pi*t), -0.1])
-            b1d = np.array([1., 0.,0.])
-            d_in = (xd, xd_dot, xd_ddot, xd_dddot, xd_ddddot,
-                    b1d, b1d_dot, b1d_ddot, Rd, Wd, Wd_dot)
-            (f, M) = self.velocity_control(t, R, W, x, v, d_in)
-        elif t < 6:
-            print("IM IN t < 6 !!!")
-            xd = np.array([8.,0.,0.])
-            ang_d=2.*np.pi*(t-4)
-            ang_d_dot=2.*np.pi
-            Rd = np.array([[np.cos(ang_d), 0., np.sin(ang_d)],[0.,1.,0.],
-                [-np.sin(ang_d), 0., np.cos(ang_d)]])
-            Rd_dot = np.array([[-ang_d_dot*np.sin(ang_d), 0.,
-                ang_d_dot*np.cos(ang_d)],[0.,0.,0.],
-                [-ang_d_dot*np.cos(ang_d), 0., -ang_d_dot*np.sin(ang_d)]])
-            Wdhat=Rd.T.dot(Rd_dot)
-            Wd=np.array([-Wdhat[1,2],Wdhat[0,2],-Wdhat[0,1]])
-            b1d = Rd[:,0]
-            b1d_dot = Rd_dot[:,0]
-            d_in = (xd, xd_dot, xd_ddot, xd_dddot, xd_ddddot,
-                    b1d, b1d_dot, b1d_ddot, Rd, Wd, Wd_dot)
-            (f, M) = self.attitude_control(t, R, W, x, v, d_in)
-        elif t < 8:
-            xd = np.array([14. - t, 0, 0])
-            xd_dot = np.array([-1 , 0, 0])
-            b1d = np.array([1., 0,0])
-            d_in = (xd, xd_dot, xd_ddot, xd_dddot, xd_ddddot,
-                    b1d, b1d_dot, b1d_ddot, Rd, Wd, Wd_dot)
-            (f, M) = self.position_control(t, R, W, x, v, d_in)
-        elif t < 9:
-            xd = np.array([6.,0.,0.])
-            ang_d=2.*np.pi*(t-8)
-            ang_d_dot=2.*np.pi
-            Rd = np.array([[1.,0.,0.],[0, np.cos(ang_d), -np.sin(ang_d)],
-                [0,np.sin(ang_d), np.cos(ang_d)]])
-            Rd_dot = np.array([[0,0,0],[0,-ang_d_dot*np.sin(ang_d),
-                -ang_d_dot*np.cos(ang_d)],
-                [0,ang_d_dot*np.cos(ang_d), -ang_d_dot*np.sin(ang_d)]])
-            Wdhat=Rd.T.dot(Rd_dot)
-            Wd=np.array([-Wdhat[1,2],Wdhat[0,2],-Wdhat[0,1]])
-            b1d = Rd[:,0]
-            b1d_dot = Rd_dot[:,0]
-            d_in = (xd, xd_dot, xd_ddot, xd_dddot, xd_ddddot,
-                    b1d, b1d_dot, b1d_ddot, Rd, Wd, Wd_dot)
-            (f, M) = self.attitude_control(t, R, W, x, v, d_in)
-        elif t < 12:
-            xd = np.array([20. - 5./3*t, 0, 0])
-            xd_dot = np.array([-5./3 , 0, 0])
-            b1d = np.array([0., 1.,0.])
-            d_in = (xd, xd_dot, xd_ddot, xd_dddot, xd_ddddot,
-                    b1d, b1d_dot, b1d_ddot, Rd, Wd, Wd_dot)
-            (f, M) = self.position_control(t, R, W, x, v, d_in)
+        
+        # if t < 4:
+        #xd_dot = np.array([1.+ 0.5*t, 0.2*np.sin(2*np.pi*t), -0.1])
+        #xd_dot = np.array([0, 0, 0.1])
+        b1d = np.array([1., 0., 0.])
+        d_in = (xd, xd_dot, xd_ddot, xd_dddot, xd_ddddot,
+                b1d, b1d_dot, b1d_ddot, Rd, Wd, Wd_dot)
+        (f, M) = self.velocity_control(t, R, W, x, v, d_in)
 
         R_dot = np.dot(R,hat(W))
         W_dot = np.dot(la.inv(self.J), M - np.cross(W, np.dot(self.J, W)))

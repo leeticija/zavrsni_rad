@@ -135,10 +135,10 @@ class GeometricController:
         # self.ang_z = msg.twist.twist.angular.z
 
         # orjentacija:
-        qx = msg.pose.pose.orientation.x
-        qy = msg.pose.pose.orientation.y
-        qz = msg.pose.pose.orientation.z
-        qw = msg.pose.pose.orientation.w
+        qx = msg.pose.pose.orientation.x # b
+        qy = msg.pose.pose.orientation.y # c
+        qz = msg.pose.pose.orientation.z # d
+        qw = msg.pose.pose.orientation.w # a
         # konverzija kvaterniona u eulerove kuteve (yaw - pitch - roll)
         self.euler_x = math.atan2(2 * (qw * qx + qy * qz), qw * qw - qx * qx - qy * qy + qz * qz)
         self.euler_y = math.asin(2 * (qw * qy - qx * qz))
@@ -160,11 +160,17 @@ class GeometricController:
         # calculate R matrix:
         # redci predstavljaju pojedinu transformiranu os koordinatnog sustava.
         # redak 1. rotacijske matrice (x):
-        R_x = [1-(2*pow(qy, 2))-(2*pow(qz, 2)), (2*qx*qy)-2*qz*qw, 2*qx*qz+2*qy*qw]
+        # R_x = [1-(2*pow(qy, 2))-(2*pow(qz, 2)), (2*qx*qy)-2*qz*qw, 2*qx*qz+2*qy*qw]
+        R_x = [-1+2*qw**2+2*qx**2, 2*qx*qy+2*qw*qz, 2*qx*qz-2*qw*qz]
+        R_y = [2*qx*qy-2*qw*qz, -1+2*qw**2+2*qy**2, 2*qy*qz+2*qx*qw]
+        R_z = [2*qx*qz+2*qw*qy, 2*qy*qz-2*qw*qx, -1+2*qw**2+2*qz**2]
+        
         # redak 2. rotacijske matrice (y):
-        R_y = [(2*qx*qy)+(2*qz*qw), 1-(2*pow(qx, 2))-(2*pow(qz, 2)), (2*qy*qz)-(2*qx*qw)]
+        #R_y = [(2*qx*qy)+(2*qz*qw), 1-(2*pow(qx, 2))-(2*pow(qz, 2)), (2*qy*qz)-(2*qx*qw)]
         # redak 3. rotacijske matrice (z):
-        R_z = [(2*qx*qz)-(2*qy*qw), (2*qy*qz)+(2*qx*qw), 1-(2*pow(qx, 2))-(2*pow(qy, 2))]
+        #R_z = [(2*qx*qz)-(2*qy*qw), (2*qy*qz)+(2*qx*qw), 1-(2*pow(qx, 2))-(2*pow(qy, 2))]
+
+        # TODO provjeriti matricu
 
         self.R = []
         self.R.append(R_x)
@@ -187,9 +193,9 @@ class GeometricController:
 
             # inicijalizirati vektor stanja X iz proracunatih odometrijskih podataka:
             self.X = [self.pos_x, self.pos_y, self.pos_z, self.linear_x, self.linear_y, self.linear_z]
-            self.X.extend(self.R[0])
-            self.X.extend(self.R[1])
-            self.X.extend(self.R[2])
+            self.X.extend([self.R[0][0], self.R[1][0], self.R[2][0]])
+            self.X.extend([self.R[0][1], self.R[1][1], self.R[2][1]])
+            self.X.extend([self.R[0][2], self.R[1][2], self.R[2][2]])
             self.X.extend([self.euler_rate_x, self.euler_rate_y, self.euler_rate_z])
 
             # pozivati dydt
@@ -199,14 +205,19 @@ class GeometricController:
             print(command)
             
             # pomocu f, M dobivenih od dydt upravljati letjelicom (pretvoriti u brzine vrtnje):
-            f_matrix = np.array([[command[0]], [command[1]], [command[2]], [command[3]]])
-            A = np.array([[1, 1, 1, 1], [0, - self.uav.d, 0, self.uav.d], [self.uav.d, 0, -self.uav.d, 0], [- self.uav.ctf, - self.uav.ctf, self.uav.ctf, - self.uav.ctf]])
+            f_matrix = np.array([round(command[0], 3), round(command[1],3), round(command[2],3), round(command[3],3)])
+            A = np.array([[1, 1, 1, 1], [0, - self.uav.d, 0, self.uav.d], [self.uav.d, 0, -self.uav.d, 0], [ self.uav.ctf, - self.uav.ctf, self.uav.ctf, - self.uav.ctf]])
             motor_speeds = self.get_motor_speeds(f_matrix, A, self.uav)
             print('MOTOR SPEEDS:', motor_speeds)
 
             mot_speed_msg = Actuators()
             # example motors speeds: 382, -382, 420, -420. 
+            
             mot_speed_msg.angular_velocities = [motor_speeds[0], motor_speeds[1], motor_speeds[2], motor_speeds[3]]            
+            if self.uav.flag == True:
+                mot_speed_msg.angular_velocities = [390, 373, 428, 417]
+            #mot_speed_msg.angular_velocities = [382, -382, 420, -420]
+            
             self.pub_mot.publish(mot_speed_msg)
 
     def get_motor_speeds(self, f_matrix, A_matrix, uav):
@@ -217,15 +228,16 @@ class GeometricController:
         sile_na_motorima = np.matmul(A_inverz, f_matrix)
 
         # Fi = bf * Ωi**2
-
-        k1 = math.sqrt(abs(sile_na_motorima[0][0])/uav.bf)
-        k2 = math.sqrt(abs(sile_na_motorima[1][0])/uav.bf)
-        k3 = math.sqrt(abs(sile_na_motorima[2][0])/uav.bf)
-        k4 = math.sqrt(abs(sile_na_motorima[3][0])/uav.bf)
+        print('UAV BF:', uav.bf)
+        print(sile_na_motorima)
+        k1 = math.sqrt(abs(sile_na_motorima[0])/uav.bf)
+        k2 = math.sqrt(abs(sile_na_motorima[1])/uav.bf)
+        k3 = math.sqrt(abs(sile_na_motorima[2])/uav.bf)
+        k4 = math.sqrt(abs(sile_na_motorima[3])/uav.bf)
 
         print("brzine:", k1, k2, k3, k4)
 
-        return k1, -k2, k3, -k4
+        return k1, k2, k3, k4
 
 
 
