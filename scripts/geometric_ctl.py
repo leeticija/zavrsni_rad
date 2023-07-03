@@ -15,6 +15,7 @@ from mav_msgs.msg import Actuators
 from sim_controller import UAV
 from scipy.integrate import ode
 from scipy.integrate import odeint
+import random
 
 
 '''
@@ -177,6 +178,9 @@ class GeometricController:
         self.R.append(R_y)
         self.R.append(R_z)
 
+        print('ROTACIJSKA MATICA')
+        print(self.R)
+
     def pos_ref_cb(self, pos):
 
         self.pos_x_ref = pos.x
@@ -193,32 +197,54 @@ class GeometricController:
 
             # inicijalizirati vektor stanja X iz proracunatih odometrijskih podataka:
             self.X = [self.pos_x, self.pos_y, self.pos_z, self.linear_x, self.linear_y, self.linear_z]
-            self.X.extend([self.R[0][0], self.R[1][0], self.R[2][0]])
-            self.X.extend([self.R[0][1], self.R[1][1], self.R[2][1]])
-            self.X.extend([self.R[0][2], self.R[1][2], self.R[2][2]])
+
+            # STUPCI ILI RETCI? nema razlike u rjesenju sile thrusta!
+
+            #self.X.extend([self.R[0][0], self.R[1][0], self.R[2][0]])
+            #self.X.extend([self.R[0][1], self.R[1][1], self.R[2][1]])
+            #self.X.extend([self.R[0][2], self.R[1][2], self.R[2][2]])
+
+            self.X.extend([self.R[0][0], self.R[0][1], self.R[0][2]])
+            self.X.extend([self.R[1][0], self.R[1][1], self.R[1][2]])
+            self.X.extend([self.R[2][0], self.R[2][1], self.R[2][2]])
+            
             self.X.extend([self.euler_rate_x, self.euler_rate_y, self.euler_rate_z])
 
             # pozivati dydt
-            self.uav.dydt(self.t, self.X)
-            command = self.uav.command # dydt je postavio komandu, tj. matricu [f, M1, M2, M3]
-            print("COMMAND:")
-            print(command)
-            
-            # pomocu f, M dobivenih od dydt upravljati letjelicom (pretvoriti u brzine vrtnje):
+            print()
+            print('POZIVAM DYDT')
+            #self.run_with_dydt()
+            print('pos ref:', self.pos_x_ref, self.pos_y_ref, self.pos_z_ref)
+            command = self.uav.get_commands(self.t, self.X, [self.pos_x_ref, self.pos_y_ref, self.pos_z_ref])
             f_matrix = np.array([round(command[0], 3), round(command[1],3), round(command[2],3), round(command[3],3)])
             A = np.array([[1, 1, 1, 1], [0, - self.uav.d, 0, self.uav.d], [self.uav.d, 0, -self.uav.d, 0], [ self.uav.ctf, - self.uav.ctf, self.uav.ctf, - self.uav.ctf]])
             motor_speeds = self.get_motor_speeds(f_matrix, A, self.uav)
-            print('MOTOR SPEEDS:', motor_speeds)
+            print('MOTOR SPEEDS:')
+            print(motor_speeds)
+            #mot_speed_msg = Actuators()
+            #mot_speed_msg.angular_velocities = [motor_speeds[0], motor_speeds[1], motor_speeds[2], motor_speeds[3]]
+            #self.pub_mot.publish(mot_speed_msg)
 
-            mot_speed_msg = Actuators()
-            # example motors speeds: 382, -382, 420, -420. 
-            
-            mot_speed_msg.angular_velocities = [motor_speeds[0], motor_speeds[1], motor_speeds[2], motor_speeds[3]]            
-            if self.uav.flag == True:
-                mot_speed_msg.angular_velocities = [390, 373, 428, 417]
-            #mot_speed_msg.angular_velocities = [382, -382, 420, -420]
-            
-            self.pub_mot.publish(mot_speed_msg)
+    def run_custom(self, s1, s2, s3, s4):
+        mot_speed_msg = Actuators()
+        mot_speed_msg.angular_velocities = [s1, s2, s3, s4]
+        self.pub_mot.publish(mot_speed_msg)
+
+    def run_with_dydt(self):
+        self.uav.dydt(self.t, self.X)
+        command = self.uav.command # dydt je postavio komandu, tj. matricu [f, M1, M2, M3]
+        print("COMMAND:")
+        print(command)
+        f_matrix = np.array([round(command[0], 3), round(command[1],3), round(command[2],3), round(command[3],3)])
+        A = np.array([[1, 1, 1, 1], [0, - self.uav.d, 0, self.uav.d], [self.uav.d, 0, -self.uav.d, 0], [ self.uav.ctf, - self.uav.ctf, self.uav.ctf, - self.uav.ctf]])
+        motor_speeds = self.get_motor_speeds(f_matrix, A, self.uav)
+        print('MOTOR SPEEDS:', motor_speeds)
+        mot_speed_msg = Actuators()
+        mot_speed_msg.angular_velocities = [motor_speeds[0], motor_speeds[1], motor_speeds[2], motor_speeds[3]]
+        #if self.uav.flag == True:
+        #    mot_speed_msg.angular_velocities = [390, 373, 428, 417]
+        self.pub_mot.publish(mot_speed_msg)
+
 
     def get_motor_speeds(self, f_matrix, A_matrix, uav):
 

@@ -25,10 +25,10 @@ class UAV(object):
         self.e3 = e3
         self.kR = 8.81 # attitude gains
         self.kW = 2.54 # angular rate gain
-        self.kx = 25*self.m # position gains
-        self.kv = 12.5*self.m # velocity gains
-        # self.kx = 0
-        #self.kv = 0*self.m
+        #self.kx = 5*self.m # position gains
+        #self.kv = 22.35*self.m # velocity gains
+        self.kx = 0
+        self.kv = 0*self.m
         self.xd = None
         self.xd_dot = None
         self.flag = False
@@ -42,15 +42,15 @@ class UAV(object):
         v = X[3:6];    # velocity
 
         #xd = np.array([0, 0, 0])
-        xd = np.array([0,0,1])
+        xd = np.array([1,1,2])
         #xd_dot = np.array([0, 0, 0.457])
         #xd_dot = np.array([0, 0, 0.45])
         print('position z:', (1-x[2])/2.117)
         #xd_dot = np.array([0, 0, (2-x[2])/4])
-        xd_dot = np.array([0, 0, (1-x[2])/2.117])
+        #xd_dot = np.array([(1-x[0])/2.117, (1-x[1])/2.117, (2-x[2])/2.117])
 
-        if 1-x[2] <= 0.8:
-            self.flag = True
+        #if 1-x[2] <= 0.8:
+        #    self.flag = True
             #self.command = np.insert(M, 0, f)
             
         xd_ddot = np.array([0, 0, 0])
@@ -60,6 +60,7 @@ class UAV(object):
         b1d_dot=np.array([0., 0., 0.])
         b1d_ddot=np.array([0., 0., 0.])
         Rd = np.eye(3)
+        #Rd = np.reshape(X[6:15], (3,3))
         Wd = np.array([0.,0.,0.])
         Wd_dot = np.array([0.,0.,0.])
         f = np.array([0,0,0])
@@ -70,10 +71,17 @@ class UAV(object):
         # if t < 4:
         #xd_dot = np.array([1.+ 0.5*t, 0.2*np.sin(2*np.pi*t), -0.1])
         #xd_dot = np.array([0, 0, 0.1])
-        b1d = np.array([1., 0., 0.])
+        #b1d = np.array([1., 0., 0.])
+        #d_in = (xd, xd_dot, xd_ddot, xd_dddot, xd_ddddot,
+        #        b1d, b1d_dot, b1d_ddot, Rd, Wd, Wd_dot)
+        #(f, M) = self.velocity_control(t, R, W, x, v, d_in)
+
+        xd = np.array([0, 0, 1])
+        xd_dot = np.array([0, 0, (2-x[2])/2])
+        b1d = np.array([1,0,0])
         d_in = (xd, xd_dot, xd_ddot, xd_dddot, xd_ddddot,
                 b1d, b1d_dot, b1d_ddot, Rd, Wd, Wd_dot)
-        (f, M) = self.velocity_control(t, R, W, x, v, d_in)
+        (f, M) = self.position_control(t, R, W, x, v, d_in)
 
         R_dot = np.dot(R,hat(W))
         W_dot = np.dot(la.inv(self.J), M - np.cross(W, np.dot(self.J, W)))
@@ -89,6 +97,14 @@ class UAV(object):
         print(f)
         return X_dot
 
+    def vee(self, M):
+        return np.array([M[2,1], M[0,2], M[1,0]])
+    
+    def hat(self, x):
+        hat_x = [0, -x[2], x[1],
+                x[2], 0, -x[0],
+                -x[1], x[0], 0]
+        return np.reshape(hat_x,(3,3))
 
     # NOVA FUNKCIJA KOJU TRENUTNO NE ZOVEM, ALI TREBALA BI RADITI ISTO STO I dydt
     # pos_ref je array s brojevima - referentna pozicija
@@ -97,12 +113,14 @@ class UAV(object):
         # M = -kR*eR - kΩ*eΩ + Ω x J*Ω - J(Ωkappa * Rtrans * Rd * Ωd - Rtras * Rd * Ωd_dot)
 
         # xd je referentna trazena pozicija (tocka u prostoru u koord. sustavu svijeta koju je potrebno postici u trenutku t).
-        xd = np.array([0.1*np.sin(2*np.pi*t), 0.1*np.sin(2*np.pi*t), pos_ref[2]])
-            
+        #xd = np.array([0.1*np.sin(2*np.pi*t), 0.1*np.sin(2*np.pi*t), pos_ref[2]])
+        xd = np.array([0,0,1])   
         # derivacije od xd:
-        xd_dot = np.array([(np.pi/5)*np.cos(2*np.pi*t), (np.pi/5)*np.cos(2*np.pi*t), 0])
-        xd_ddot = np.array([-((2*pow(np.pi, 2))/5)*np.sin(2*np.pi*t), -((2*pow(np.pi, 2))/5)*np.sin(2*np.pi*t), 0])
+        #xd_dot = np.array([(np.pi/5)*np.cos(2*np.pi*t), (np.pi/5)*np.cos(2*np.pi*t), 0])
+        #xd_ddot = np.array([-((2*pow(np.pi, 2))/5)*np.sin(2*np.pi*t), -((2*pow(np.pi, 2))/5)*np.sin(2*np.pi*t), 0])
 
+        xd_dot = np.array([0,0,0.1])
+        xd_ddot = np.array([0,0,0])
         # naci sve potrebne vrijednosti:
 
         # 1. ex = x - xd ----> position error u trenutku t:
@@ -126,8 +144,62 @@ class UAV(object):
 
         print('TOTAl THRUST:')
         print(f)
+
+        # izracunati M
+
+        b3d = np.array([0,0,-1]) # -1 je jer taj vektor pokazuje prema dolje, suprotno od ukupne sile thrusta.
+        b2d = np.array([0,1,0])
+        # b1d = np.array([-1,0,0]) to je zapravo cross product od b2d i b3d, ali pitanje je je li desni ili ljevi koordinatni sustav?
         
-        return None
+        # M = -kR*eR - kΩ*eΩ + Ω x J*Ω - J(Ωkappa * Rtrans * Rd * Ωd - Rtras * Rd * Ωd_dot)
+
+        # 1. eR = 1/2(Rd trans * R - R trans * Rd) vee map
+        
+        # Rd = [b2d x b3d, b2d, b3d]
+        Rd = np.array([np.cross(b2d, b3d), b2d, b3d])
+        print('Rd:')
+        print(Rd)
+
+        Rd_trans = Rd.transpose()
+        R_trans = R.transpose()
+        diff = np.matmul(Rd_trans, R) - (np.matmul(R_trans, Rd))
+        vee = self.vee(diff)
+        eR = (1/2) * vee
+        print('eR:')
+        print(eR)
+
+        # 2. eΩ = Ω -R trans * Rd * Ωd
+
+        # Ω = W
+        W = np.array(X[15:])   # angular rate
+        Wd = np.array([0,0,0]) # je li desired angular velocity 0?
+        Wd_dot = np.array([0,0,0])
+        multiplied = np.matmul(R_trans, Rd)
+
+        eW = W - (np.matmul(multiplied, Wd))
+
+        print('eW:')
+        print(eW)
+
+        # 3. izracunati M!
+        cross_product = np.cross(W, np.matmul(self.J, W))
+        print('cross product:')
+        print(cross_product)
+        multiplied = self.J*((self.hat(W)*np.matmul(R_trans, Rd))*Wd - (np.matmul(R_trans, Rd)*Wd_dot))
+        print('multiplied:')
+        print(multiplied)
+        M = - self.kR*eR - self.kW*eW + cross_product - multiplied
+
+        M = M[0]
+        print("M:")
+        print(M)
+
+        self.command = np.insert(M, 0, f[2])
+
+        print('COMMAND:')
+        print(self.command)
+
+        return self.command
 
 
     def position_control(self, t, R, W, x, v, d_in):
@@ -219,8 +291,8 @@ def get_Rc(A, A_dot, A_2dot, b1d, b1d_dot, b1d_ddot):
     Wc_dot= vee( Rc_dot.T.dot(Rc_dot) + Rc.T.dot(Rc_2dot))
     return (Rc, Wc, Wc_dot)
 
-def vee(M):
-    return np.array([M[2,1], M[0,2], M[1,0]])
+#def vee(M):
+#    return np.array([M[2,1], M[0,2], M[1,0]])
 
 
 def attitude_errors( R, Rd, W, Wd ):
